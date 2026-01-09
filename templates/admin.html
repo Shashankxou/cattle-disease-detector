@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Cattle Disease Detection{% endblock %}
+
+{% block content %}
+{% if login_page %}
+<!-- Login Page -->
+<section class="login-section">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fas fa-lock"></i>
+                <h2>Admin Login</h2>
+                <p>Access the dashboard</p>
+            </div>
+            <form method="POST" action="{{ url_for('admin_login') }}">
+                <div class="form-group">
+                    <label for="username">
+                        <i class="fas fa-user"></i> Username
+                    </label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">
+                        <i class="fas fa-key"></i> Password
+                    </label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+            </form>
+            <p class="login-hint">Default: admin / admin123</p>
+        </div>
+    </div>
+</section>
+{% else %}
+<!-- Dashboard -->
+<section class="dashboard-section">
+    <div class="container">
+        <div class="dashboard-header">
+            <div>
+                <h1><i class="fas fa-chart-line"></i> Admin Dashboard</h1>
+                <p>Monitor and analyze cattle health diagnostics</p>
+            </div>
+            <a href="{{ url_for('admin_logout') }}" class="btn btn-secondary">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </a>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card-large">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <i class="fas fa-file-medical"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="totalReports">{{ total_reports }}</h3>
+                    <p>Total Reports</p>
+                </div>
+            </div>
+
+            <div class="stat-card-large">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="diseaseCount">0</h3>
+                    <p>Disease Cases</p>
+                </div>
+            </div>
+
+            <div class="stat-card-large">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <h3 id="healthyCount">0</h3>
+                    <p>Healthy Cattle</p>
+                </div>
+            </div>
+
+            <div class="stat-card-large">
+                <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                    <i class="fas fa-percentage"></i>
+                </div>
+                <div class="stat-info">
+                    <h3>{{ avg_confidence }}%</h3>
+                    <p>Avg Confidence</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="charts-row">
+            <div class="chart-card">
+                <h3><i class="fas fa-chart-pie"></i> Disease Distribution</h3>
+                <canvas id="diseaseChart"></canvas>
+            </div>
+
+            <div class="chart-card">
+                <h3><i class="fas fa-chart-line"></i> Reports Over Time</h3>
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent Reports Table -->
+        <div class="table-card">
+            <div class="table-header">
+                <h3><i class="fas fa-list"></i> Recent Reports</h3>
+                <button class="btn btn-sm btn-primary" onclick="location.reload()">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table" id="reportsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Image</th>
+                            <th>Diagnosis</th>
+                            <th>Confidence</th>
+                            <th>Cattle ID</th>
+                            <th>Location</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reportsTableBody">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if not login_page %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    // Fetch stats and populate dashboard
+    async function loadDashboard() {
+        try {
+            const response = await fetch('/api/stats');
+            const data = await response.json();
+
+            // Update counters
+            let diseaseCount = 0;
+            let healthyCount = 0;
+
+            Object.entries(data.by_disease).forEach(([disease, count]) => {
+                if (disease.toLowerCase().includes('healthy')) {
+                    healthyCount += count;
+                } else {
+                    diseaseCount += count;
+                }
+            });
+
+            document.getElementById('diseaseCount').textContent = diseaseCount;
+            document.getElementById('healthyCount').textContent = healthyCount;
+
+            // Disease Distribution Chart
+            const diseaseCtx = document.getElementById('diseaseChart').getContext('2d');
+            const diseaseLabels = Object.keys(data.by_disease);
+            const diseaseData = Object.values(data.by_disease);
+            
+            const colors = [
+                '#667eea', '#764ba2', '#f093fb', '#f5576c',
+                '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'
+            ];
+
+            new Chart(diseaseCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: diseaseLabels,
+                    datasets: [{
+                        data: diseaseData,
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }
+            });
+
+            // Timeline Chart
+            const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+            const timelineLabels = data.daily_reports.map(item => item[0]).reverse();
+            const timelineData = data.daily_reports.map(item => item[1]).reverse();
+
+            new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: timelineLabels,
+                    datasets: [{
+                        label: 'Reports',
+                        data: timelineData,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Load recent reports
+            loadRecentReports();
+
+        } catch (error) {
+            console.error('Error loading dashboard:', error);
+        }
+    }
+
+    async function loadRecentReports() {
+        try {
+            const response = await fetch('/reports');
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            // This is a simplified version - in production, create an API endpoint
+            const tableBody = document.getElementById('reportsTableBody');
+            tableBody.innerHTML = '<tr><td colspan="8" class="text-center">Loading...</td></tr>';
+            
+        } catch (error) {
+            console.error('Error loading reports:', error);
+        }
+    }
+
+    // Load dashboard on page load
+    loadDashboard();
+</script>
+{% endif %}
+{% endblock %}
